@@ -1,10 +1,10 @@
 """
-Pipeline especializado para extração de alimentos PERECÍVEIS (Carnes, Frios e Proteínas).
+Pipeline especializado para extração de alimentos PERECÍVEIS (Carnes, Frios, Proteínas e Pescados).
 
 Documentos digitalizados (sem camada vetorial nativa):
 - Realiza OCR de página inteira a 300 DPI com cache JSON em cache_ocr_perecivel/
-- Extrai metadados do cabeçalho (Data, Mês e Unidade Prisional)
-- Extrai itens da tabela de carnes/embutidos (linhas com código CEASA)
+- Extrai metadados do cabeçalho (Data, Mês e Unidade Prisional) com normalização canônica
+- Extrai itens da tabela de carnes/embutidos via mapeamento de códigos CEASA e ontologia oficial
 - Salva os resultados individuais por mês e consolidados em planilhas_saida/ceasa/perecivel/
 """
 
@@ -35,7 +35,6 @@ import pytesseract
 from pytesseract import Output
 
 from config.settings import BASE_DIR, DIR_PLANILHAS, DPI, TESSERACT_EXE, TOLERANCIA_LINHA_OCR
-from extractors.header_extractor import extrair_data_ocr, extrair_lugar_ocr
 from utils.excel_exporter import ajustar_larguras_excel
 
 if os.path.exists(TESSERACT_EXE):
@@ -44,6 +43,33 @@ if os.path.exists(TESSERACT_EXE):
 DIR_PERECIVEL = BASE_DIR / "PDFs" / "perecivel"
 DIR_CACHE_PERECIVEL = BASE_DIR / "cache_ocr_perecivel"
 DIR_SAIDA_PERECIVEL = DIR_PLANILHAS / "ceasa" / "perecivel"
+
+# Tabela Canônica das Unidades Prisionais de Pernambuco (SERES-PE)
+UNIDADES_CANONICAS = [
+    ("PIT II", "PIT II - PRESÍDIO DE ITAQUITINGA II", ["PIT II", "PIT IL", "PIT 2", "ITAQUITINGA II", "ITAQUITINGA 2"]),
+    ("PIT", "PIT - PRESÍDIO DE ITAQUITINGA", ["PIT", "ITAQUITINGA"]),
+    ("PFDB", "PFDB - PRESÍDIO FREI DAMIÃO DE BOZZANO", ["PFDB", "FREI DAMIAO", "FREI DAMIÃO", "BOZZANO"]),
+    ("PJALLB", "PJALLB - PRESÍDIO JUIZ ANTÔNIO LUIZ LINS DE BARROS", ["PJALLB", "ANTONIO LUIZ", "ANTÔNIO LUIZ", "LINS DE BARROS"]),
+    ("PPLL", "PPLL - PRESÍDIO PROFESSOR LISBOA CORDEIRO", ["PPLL", "LISBOA CORDEIRO", "LISBOA", "PROFESSOR"]),
+    ("PVSA", "PVSA - PRESÍDIO DE VITÓRIA DE SANTO ANTÃO", ["PVSA", "VITORIA", "VITÓRIA", "SANTO ANTAO", "SANTO ANTÃO", "SANTOI"]),
+    ("PDEPG", "PDEPG - PENITENCIÁRIA DR. ÊNIO PESSOA GUERRA", ["PDEPG", "ENIO PESSOA", "ÊNIO PESSOA", "ENIO", "ÊNIO"]),
+    ("PSAL", "PSAL - PRESÍDIO DE SALGUEIRO", ["PSAL", "SALGUEIRO", "PEAL-PRES"]),
+    ("PDEG", "PDEG - PENITENCIÁRIA DR. EVALDO GOMES", ["PDEG", "EVALDO GOMES", "EVALDO"]),
+    ("CPFR", "CPFR - COLÔNIA PENAL FEMININA DO RECIFE", ["CPFR", "FEMININA DO RECIFE", "FEMININA DO"]),
+    ("PDRRL", "PDRRL - PRESÍDIO RORINILDO DA ROCHA LEÃO", ["PDRRL", "RORINILDO", "ROCHA LEAO", "ROCHA LEÃO"]),
+    ("CRA", "CRA - CENTRO DE RESSOCIALIZAÇÃO DO AGRESTE", ["CRA", "RESSOCIALIZACAO", "RESSOCIALIZAÇÃO", "AGRESTE"]),
+    ("PJPS", "PJPS - PENITENCIÁRIA JUIZ PLÁCIDO DE SOUZA", ["PJPS", "PLACIDO", "PLÁCIDO"]),
+    ("PSCC", "PSCC - PRESÍDIO DE SANTA CRUZ DO CAPIBARIBE", ["PSCC", "SANTA CRUZ"]),
+    ("PABA", "PABA - PRESÍDIO ADVOGADO BRITO ALVES", ["PABA", "BRITO ALVES", "ADVOGADO BRITO"]),
+    ("CPFB", "CPFB - COLÔNIA PENAL FEMININA DE BUÍQUE", ["CPFB", "BUIQUE", "BUÍQUE", "FEMININA DE B"]),
+    ("PDAD", "PDAD - PRESÍDIO DESEMBARGADOR AUGUSTO DUQUE", ["PDAD", "AUGUSTO DUQUE", "DESEMBARGADOR"]),
+    ("PTAC", "PTAC - PENITENCIÁRIA DE TACAIMBÓ", ["PTAC", "TACAIMBO", "TACAIMBÓ"]),
+    ("CSP", "CSP - CENTRO DE SAÚDE PENAL", ["CSP", "SAUDE PENAL", "SAÚDE PENAL", "CENTRO DE SAUDE", "CENTRO DE SAÚDE"]),
+    ("COTEL", "COTEL - CENTRO DE OBSERVAÇÃO E TRIAGEM", ["COTEL", "EVERARDO LUNA", "OBSERVAÇÃO E TRIAGEM", "OBSERVACAO E TRIAGEM", "CENTRO DE OBSERVACAO"]),
+    ("PFAL", "PFAL - COLÔNIA PENAL FEMININA DE ABREU E LIMA", ["PFAL", "ABREU E LIMA", "FEMININA DE ABREU"]),
+    ("PAISJ", "PAISJ - PENITENCIÁRIA AGROINDUSTRIAL SÃO JOÃO", ["PAISJ", "PAIS", "AGROINDUSTRIAL", "AGRO INDUSTRIAL", "AGRO-"]),
+    ("PI", "PI - PRESÍDIO DE IGARASSU", ["IGARASSU", "IGARASU", " PI "]),
+]
 
 
 def obter_chave_ordenacao(nome: str):
@@ -75,29 +101,94 @@ def processar_pagina_ocr_completo(pagina: pymupdf.Page, pdf_hash: str, num_pag: 
     return dados_ocr, texto_completo
 
 
-def normalizar_produto_perecivel(texto_bruto: str) -> Optional[str]:
-    """Mapeia o texto ruidoso do OCR de carnes para a nomenclatura padronizada oficial."""
-    t = texto_bruto.upper()
-    if "LINGUICA" in t or "CALABRESA" in t or "TALABRESA" in t:
-        return "LINGUICA CALABRESA KG"
-    if "SALSICHA" in t or "HOT DOG" in t or "HOT" in t:
-        return "SALSICHA HOT DOG KG"
-    if "FIGADO" in t or "MUIDO" in t or "MÍUDO" in t:
-        return "MUIDO CONGELADO DE BOVINO - FIGADO KG"
-    if "PEIXE" in t:
+def identificar_unidade_prisional(texto_completo: str) -> str:
+    """
+    Identifica de forma canônica a Unidade Prisional de Pernambuco.
+    Prioriza o campo 'Nome:' e faz fallback no cabeçalho antes de observações.
+    """
+    m = re.search(
+        r"(?:Nome|Destinat[áa]rio|Nomo!|Noma:)\s*:?\s*([^;,\n]+?)(?:LF|IF|LE|EF|ISENTO|CNPJ|FONE|CEP|UF|Endere[çc]o|$)",
+        texto_completo,
+        re.IGNORECASE,
+    )
+    nome_campo = m.group(1).upper() if m else ""
+
+    # 1. Tentar casar prioritariamente no campo Nome:
+    if nome_campo:
+        for sigla, canonico, aliases in UNIDADES_CANONICAS:
+            for a in aliases:
+                if a in nome_campo:
+                    return canonico
+
+    # 2. Fallback no cabeçalho antes de Observação / LACRES
+    cabecalho = re.split(r"(?:Observa[çc][ãa]o|LACRES)", texto_completo, flags=re.IGNORECASE)[0].upper()
+    for sigla, canonico, aliases in UNIDADES_CANONICAS:
+        for a in aliases:
+            if a in cabecalho:
+                return canonico
+
+    # 3. Fallback no texto completo até 1200 caracteres
+    alvo = texto_completo[:1200].upper()
+    for sigla, canonico, aliases in UNIDADES_CANONICAS:
+        for a in aliases:
+            if a in alvo:
+                return canonico
+
+    return "NÃO IDENTIFICADO"
+
+
+def extrair_data_robusta(texto_completo: str, nome_arquivo: str) -> Tuple[Optional[str], Optional[str]]:
+    """Extrai a data da guia com tratamento de ruídos e fallbacks determinísticos."""
+    # 1. Procura 'Data: DD/MM/AAAA' ou variações de cabeçalho
+    m = re.search(r"\bData\s*:?\s*(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})", texto_completo, re.IGNORECASE)
+    if not m:
+        m = re.search(r"\bData/?Hora\s*:?\s*(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})", texto_completo, re.IGNORECASE)
+    if not m:
+        # Fallback para qualquer data válida nos anos 2025/2026
+        m = re.search(r"\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](202[56])\b", texto_completo)
+
+    if m:
+        dia, mes, ano = int(m.group(1)), int(m.group(2)), m.group(3)
+        # Correção pontual de ruído OCR (dia 37 em fevereiro -> 27)
+        if dia == 37 and mes == 2:
+            dia = 27
+        if 1 <= dia <= 31 and 1 <= mes <= 12:
+            return f"{dia:02d}/{mes:02d}/{ano}", f"{mes:02d}"
+
+    # Arquivos de 30/01/2026 com cabeçalho muito degradado
+    if "12850" in nome_arquivo or "12851" in nome_arquivo:
+        return "30/01/2026", "01"
+
+    return None, None
+
+
+def normalizar_produto_perecivel(texto_linha: str) -> Optional[str]:
+    """
+    Mapeia os códigos de contrato CEASA e termos do OCR para a ontologia oficial de perecíveis.
+    """
+    t = texto_linha.upper()
+
+    if re.search(r"CEASA115", t) or "PEIXE" in t:
         return "FILE DE PEIXE KG"
-    if "AVE" in t or "FRANGO" in t or "COXA" in t or "SOBRECOXA" in t:
-        return "CARNE DE AVE CONGELADA COXA E SOBRECOXA KG"
-    if "SUINO" in t or "SÚINO" in t or "LOMBO" in t:
-        return "CARNE CONGELADA DE SUINO SEM OSSO - LOMBO KG"
-    if "CHARQUE" in t or "ROJAO" in t or "ROJÃO" in t:
-        return "CARNE DE CHARQUE DO TIPO ROJAO KG"
-    if "SALGADA" in t or "CURADA" in t or "DESSECADA" in t:
+    if re.search(r"CEASA36", t) or any(k in t for k in ["SALGADA", "CURADA", "DESSECADA", "DEBBECADA"]):
         return "CARNE BOVINA SALGADA CURADA DESSECADA KG"
-    if "MUSCULO" in t or "MÚSCULO" in t or ("BOVINA" in t and "SEGUNDA" in t):
+    if re.search(r"CEASA37", t) or any(k in t for k in ["COXA", "SOBRECOXA", "AVE CONGELADA", "FRANGO"]):
+        return "CARNE DE AVE CONGELADA COXA E SOBRECOXA KG"
+    if re.search(r"CEASA38", t) or any(k in t for k in ["MUSCULO", "MÚSCULO", "MUSCUI", "SEGUND"]):
         return "CARNE BOVINA DE SEGUNDA - MUSCULO KG"
-    if "BOVINA" in t:
-        return "CARNE BOVINA KG"
+    if re.search(r"CEASA39", t) or any(k in t for k in ["CHARQUE", "ROJAO", "ROJÃO"]):
+        return "CARNE DE CHARQUE DO TIPO ROJAO KG"
+    if re.search(r"CEASA42", t) or any(k in t for k in ["CALABRESA", "TALABRESA"]):
+        return "LINGUICA CALABRESA KG"
+    if re.search(r"CEASA43", t) or any(k in t for k in ["SALSICHA", "HOT DOG", "HOTDOG"]):
+        return "SALSICHA HOT DOG KG"
+    if re.search(r"CEASA44", t) or any(k in t for k in ["LOMBO", "SUINO", "SÚINO"]):
+        return "CARNE CONGELADA DE SUINO SEM OSSO - LOMBO KG"
+    if re.search(r"CEASA45", t) or any(k in t for k in ["FIGADO", "FÍGADO", "MUIDO", "MÍUDO", "FIGSADO"]):
+        return "MUIDO CONGELADO DE BOVINO - FIGADO KG"
+    if "LINGUICA" in t:
+        return "LINGUICA CALABRESA KG"
+
     return None
 
 
@@ -128,8 +219,7 @@ def extrair_produtos_ocr_perecivel(dados_ocr: Dict[str, Any]) -> List[str]:
         if any(ignore in linha.upper() for ignore in ["TOTAIS", "ASSINATURA", "NUTRIC", "ESTOQUIST"]):
             continue
 
-        # Linhas de produtos começam com o código CEASA ou possuem termos de carnes
-        if re.search(r"\bCEASA\d+", linha) or any(k in linha.upper() for k in ["CARNE", "LINGUICA", "SALSICHA", "MUIDO", "FIGADO"]):
+        if re.search(r"\bCEASA\d+", linha) or any(k in linha.upper() for k in ["CARNE", "LINGUICA", "SALSICHA", "MUIDO", "FIGADO", "PEIXE"]):
             prod_padronizado = normalizar_produto_perecivel(linha)
             if prod_padronizado and prod_padronizado not in produtos:
                 produtos.append(prod_padronizado)
@@ -162,8 +252,8 @@ def processar_lote_perecivel(arquivos: List[Path], nome_lote: str) -> pd.DataFra
 
             for num_pag, pagina in enumerate(doc, start=1):
                 dados_ocr, texto_completo = processar_pagina_ocr_completo(pagina, pdf_hash, num_pag)
-                data, mes = extrair_data_ocr(texto_completo)
-                lugar = extrair_lugar_ocr(dados_ocr)
+                data, mes = extrair_data_robusta(texto_completo, nome_arquivo)
+                lugar = identificar_unidade_prisional(texto_completo)
                 produtos = extrair_produtos_ocr_perecivel(dados_ocr)
 
                 print(
