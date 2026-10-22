@@ -1,0 +1,64 @@
+# ==========================================
+# 🐍 Bytecode & Cache do Python
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# ==========================================
+# 🧪 Ambientes Virtuais & Ferramentas
+# ==========================================
+venv/
+.venv/
+env/
+ENV/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ==========================================
+# 📄 Materiais Brutos (PDFs de Entrada)
+# ==========================================
+PDFs/
+PDFs_organizados/
+*.pdf
+*.PDF
+
+# ==========================================
+# ⚡ Caches de Extração & OCR
+# ==========================================
+cache_ocr/
+cache_ocr_*/
+.cache_ocr/
+*.cache
+
+# ==========================================
+# 📊 Arquivos de Saída & Planilhas Geradas
+# ==========================================
+planilhas_saida/
+saida_*.xlsx
+*.xlsx
+*.xls
+*.csv
+
+# ==========================================
+# 📝 Anotações & Planejamento Local
+# ==========================================
+proximos_passos.txt
+tarefa.md
+*.tmp
+*.log
+
+# ==========================================
+# 💻 Configurações de IDE & Sistema Operacional
+# ==========================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
