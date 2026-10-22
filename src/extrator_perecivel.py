@@ -36,6 +36,7 @@ from pytesseract import Output
 
 from config.settings import BASE_DIR, DIR_PLANILHAS, DPI, TESSERACT_EXE, TOLERANCIA_LINHA_OCR
 from utils.excel_exporter import ajustar_larguras_excel
+from utils.text_cleaner import detectar_reposicao
 
 if os.path.exists(TESSERACT_EXE):
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
@@ -65,7 +66,7 @@ UNIDADES_CANONICAS = [
     ("PDAD", "PDAD - PRESÍDIO DESEMBARGADOR AUGUSTO DUQUE", ["PDAD", "AUGUSTO DUQUE", "DESEMBARGADOR"]),
     ("PTAC", "PTAC - PENITENCIÁRIA DE TACAIMBÓ", ["PTAC", "TACAIMBO", "TACAIMBÓ"]),
     ("CSP", "CSP - CENTRO DE SAÚDE PENAL", ["CSP", "SAUDE PENAL", "SAÚDE PENAL", "CENTRO DE SAUDE", "CENTRO DE SAÚDE"]),
-    ("COTEL", "COTEL - CENTRO DE OBSERVAÇÃO E TRIAGEM", ["COTEL", "EVERARDO LUNA", "OBSERVAÇÃO E TRIAGEM", "OBSERVACAO E TRIAGEM", "CENTRO DE OBSERVACAO"]),
+    ("COTEL", "COTEL - CENTRO DE OBSERVAÇÃO E TRIAGEM", ["COTEL", "EVERARDO LUNA", "OBSERVAÇÃO E TRIAGEM", "OBSERVACAO E TRIAGEM", "CENTRO DE OBSERVACAO", "EOREL", "RINALDO PINHO"]),
     ("PFAL", "PFAL - COLÔNIA PENAL FEMININA DE ABREU E LIMA", ["PFAL", "ABREU E LIMA", "FEMININA DE ABREU"]),
     ("PAISJ", "PAISJ - PENITENCIÁRIA AGROINDUSTRIAL SÃO JOÃO", ["PAISJ", "PAIS", "AGROINDUSTRIAL", "AGRO INDUSTRIAL", "AGRO-"]),
     ("PI", "PI - PRESÍDIO DE IGARASSU", ["IGARASSU", "IGARASU", " PI "]),
@@ -250,37 +251,52 @@ def processar_lote_perecivel(arquivos: List[Path], nome_lote: str) -> pd.DataFra
             doc = pymupdf.open(caminho_pdf)
             pdf_hash = hashlib.md5(caminho_pdf.read_bytes()).hexdigest()[:10]
 
+            textos_doc = []
+            data_final, mes_final, lugar_final = None, None, "NÃO IDENTIFICADO"
+
             for num_pag, pagina in enumerate(doc, start=1):
                 dados_ocr, texto_completo = processar_pagina_ocr_completo(pagina, pdf_hash, num_pag)
-                data, mes = extrair_data_robusta(texto_completo, nome_arquivo)
-                lugar = identificar_unidade_prisional(texto_completo)
-                produtos = extrair_produtos_ocr_perecivel(dados_ocr)
+                textos_doc.append(texto_completo)
+                textos_doc.append(pagina.get_text())
 
-                print(
-                    f"[{idx:03d}/{len(arquivos):03d}] {nome_arquivo} (pág {pagina_continua_global}): "
-                    f"{len(produtos):2d} carnes/frios | Data: {data or 'N/A'} | Local: {lugar[:35]}"
-                )
+                if num_pag == 1 or data_final is None:
+                    d, m = extrair_data_robusta(texto_completo, nome_arquivo)
+                    if d:
+                        data_final, mes_final = d, m
 
-                for prod in produtos:
-                    registros.append({
-                        "pasta_origem": nome_lote,
-                        "arquivo": nome_arquivo,
-                        "pagina": pagina_continua_global,
-                        "lugar": lugar,
-                        "produto": prod,
-                        "data": data,
-                        "mes": mes,
-                    })
-
-                pagina_continua_global += 1
+                if num_pag == 1 or lugar_final == "NÃO IDENTIFICADO":
+                    lug = identificar_unidade_prisional(texto_completo)
+                    if lug != "NÃO IDENTIFICADO":
+                        lugar_final = lug
 
             doc.close()
+
+            texto_total = " ".join(textos_doc)
+            reposicao = detectar_reposicao(texto_total)
+
+            print(
+                f"[{idx:03d}/{len(arquivos):03d}] {nome_arquivo} (guia {pagina_continua_global}): "
+                f"Data: {data_final or 'N/A'} | Local: {lugar_final[:35]} | Reposição: {reposicao}"
+            )
+
+            registros.append({
+                "pasta_origem": nome_lote,
+                "arquivo": nome_arquivo,
+                "pagina": pagina_continua_global,
+                "lugar": lugar_final,
+                "data": data_final,
+                "mes": mes_final,
+                "reposicao": reposicao,
+            })
+
+            pagina_continua_global += 1
+
         except Exception as e:
             print(f"Erro ao processar {nome_arquivo}: {e}")
 
     df = pd.DataFrame(registros)
     if not df.empty:
-        colunas = ["arquivo", "pagina", "lugar", "produto", "data", "mes"]
+        colunas = ["arquivo", "pagina", "lugar", "data", "mes", "reposicao"]
         df = df[colunas]
     return df
 

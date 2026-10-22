@@ -76,7 +76,7 @@ def extrair_lugar_ocr(dados_ocr: Dict[str, Any]) -> str:
     return "NÃO IDENTIFICADO"
 
 
-def processar_cabecalho_ocr(pagina: pymupdf.Page, pdf_hash: str, num_pag: int) -> Tuple[Optional[str], Optional[str], str]:
+def processar_cabecalho_ocr(pagina: pymupdf.Page, pdf_hash: str, num_pag: int) -> Tuple[Optional[str], Optional[str], str, str]:
     """Executa OCR na metade superior da página com sistema de cache JSON."""
     DIR_CACHE.mkdir(parents=True, exist_ok=True)
     arquivo_cache = DIR_CACHE / f"{pdf_hash}_p{num_pag:04d}_header.json"
@@ -100,4 +100,4 @@ def processar_cabecalho_ocr(pagina: pymupdf.Page, pdf_hash: str, num_pag: int) -
     texto_completo = " ".join(t for t in dados_ocr.get("text", []) if t.strip())
     data, mes = extrair_data_ocr(texto_completo)
     lugar = extrair_lugar_ocr(dados_ocr)
-    return data, mes, lugar
+    return data, mes, lugar, texto_completo

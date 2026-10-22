@@ -31,8 +31,9 @@ import pymupdf
 
 from config.settings import ARQUIVO_SAIDA_XLSX, DIR_CACHE, DIR_PDFS, DIR_PLANILHAS
 from extractors.header_extractor import processar_cabecalho_ocr
-from extractors.product_extractor import extrair_produtos_da_pagina
+from extrator_perecivel import identificar_unidade_prisional
 from utils.excel_exporter import ajustar_larguras_excel
+from utils.text_cleaner import detectar_reposicao
 
 
 def obter_chave_ordenacao(nome: str):
@@ -57,7 +58,7 @@ def salvar_excel_seguro(df: pd.DataFrame, caminho_destino: Path):
 
 
 def processar_lote_pdfs(arquivos_caminhos: list, nome_lote: str) -> pd.DataFrame:
-    """Processa uma lista de arquivos PDF gerando registros com paginação contínua."""
+    """Processa uma lista de arquivos PDF gerando 1 linha consolidada por guia de entrega."""
     registros = []
     pagina_continua_global = 1
 
@@ -68,24 +69,31 @@ def processar_lote_pdfs(arquivos_caminhos: list, nome_lote: str) -> pd.DataFrame
             pdf_hash = hashlib.md5(caminho_pdf.read_bytes()).hexdigest()[:10]
 
             for num_pag, pagina in enumerate(doc, start=1):
-                data, mes, lugar = processar_cabecalho_ocr(pagina, pdf_hash, num_pag)
-                produtos = extrair_produtos_da_pagina(pagina)
+                data, mes, lugar, texto_ocr = processar_cabecalho_ocr(pagina, pdf_hash, num_pag)
+                texto_pagina = pagina.get_text()
+                texto_combinado = f"{texto_pagina} {texto_ocr}"
+
+                if lugar == "NÃO IDENTIFICADO":
+                    lug_fallback = identificar_unidade_prisional(texto_combinado)
+                    if lug_fallback != "NÃO IDENTIFICADO":
+                        lugar = lug_fallback
+
+                reposicao = detectar_reposicao(texto_combinado)
 
                 print(
-                    f"[{idx:03d}/{len(arquivos_caminhos):03d}] {nome_arquivo} (pág {pagina_continua_global}): "
-                    f"{len(produtos):2d} alimentos | Data: {data or 'N/A'} | Local: {lugar[:35]}"
+                    f"[{idx:03d}/{len(arquivos_caminhos):03d}] {nome_arquivo} (guia {pagina_continua_global}): "
+                    f"Data: {data or 'N/A'} | Local: {lugar[:35]} | Reposição: {reposicao}"
                 )
 
-                for prod in produtos:
-                    registros.append({
-                        "pasta_origem": nome_lote,
-                        "arquivo": nome_arquivo,
-                        "pagina": pagina_continua_global,
-                        "lugar": lugar,
-                        "produto": prod,
-                        "data": data,
-                        "mes": mes,
-                    })
+                registros.append({
+                    "pasta_origem": nome_lote,
+                    "arquivo": nome_arquivo,
+                    "pagina": pagina_continua_global,
+                    "lugar": lugar,
+                    "data": data,
+                    "mes": mes,
+                    "reposicao": reposicao,
+                })
 
                 pagina_continua_global += 1
 
@@ -95,32 +103,37 @@ def processar_lote_pdfs(arquivos_caminhos: list, nome_lote: str) -> pd.DataFrame
 
     df = pd.DataFrame(registros)
     if not df.empty:
-        colunas = ["arquivo", "pagina", "lugar", "produto", "data", "mes"]
+        colunas = ["arquivo", "pagina", "lugar", "data", "mes", "reposicao"]
         df = df[colunas]
     return df
 
 
+DIR_HORTIFRUTE = DIR_PDFS / "hortifrute"
+DIR_SAIDA_HORTIFRUTE = DIR_PLANILHAS / "ceasa" / "hortifrute"
+ARQUIVO_SAIDA_HORTIFRUTE = DIR_SAIDA_HORTIFRUTE / "saida_consolidada_total.xlsx"
+
+
 def executar_pipeline() -> None:
     """
-    Executa a automação para cada uma das subpastas dentro de PDFs/
+    Executa a automação para cada uma das subpastas dentro de PDFs/hortifrute/
     e gera:
-    1. Uma planilha dedicada para cada subpasta em planilhas_saida/
+    1. Uma planilha dedicada para cada subpasta em planilhas_saida/ceasa/hortifrute/
     2. Uma planilha consolidada geral com todos os meses.
     """
-    if not DIR_PDFS.exists():
-        print(f"Diretório não encontrado: {DIR_PDFS}")
+    dir_busca = DIR_HORTIFRUTE if DIR_HORTIFRUTE.exists() else DIR_PDFS
+    if not dir_busca.exists():
+        print(f"Diretório não encontrado: {dir_busca}")
         return
 
-    DIR_PLANILHAS.mkdir(parents=True, exist_ok=True)
+    DIR_SAIDA_HORTIFRUTE.mkdir(parents=True, exist_ok=True)
 
     # Identificar subpastas de PDFs
-    subpastas = sorted([p for p in DIR_PDFS.iterdir() if p.is_dir()])
+    subpastas = sorted([p for p in dir_busca.iterdir() if p.is_dir()])
     
     if not subpastas:
-        # Se os PDFs estiverem diretamente na raiz de PDFs/
-        subpastas = [DIR_PDFS]
+        subpastas = [dir_busca]
 
-    print(f"\n🚀 Iniciando processamento de {len(subpastas)} pastas de PDFs...\n")
+    print(f"\n🚀 Iniciando processamento de {len(subpastas)} pastas de Hortifrúti...\n")
 
     todos_dfs = []
 
@@ -141,9 +154,8 @@ def executar_pipeline() -> None:
         df_lote = processar_lote_pdfs(arquivos_caminhos, nome_subpasta)
 
         if not df_lote.empty:
-            # Nome da planilha limpo para cada subpasta garantindo extensão .xlsx
             nome_limpo = re.sub(r'[\\/*?:"<>|.]', "_", nome_subpasta).replace(" ", "_")
-            caminho_saida_lote = DIR_PLANILHAS / f"saida_{nome_limpo}.xlsx"
+            caminho_saida_lote = DIR_SAIDA_HORTIFRUTE / f"saida_{nome_limpo}.xlsx"
             salvar_excel_seguro(df_lote, caminho_saida_lote)
             todos_dfs.append(df_lote)
 
@@ -151,10 +163,10 @@ def executar_pipeline() -> None:
     if todos_dfs:
         df_total = pd.concat(todos_dfs, ignore_index=True)
         print("\n" + "=" * 70)
-        print("📊 GERANDO PLANILHA CONSOLIDADA GERAL")
+        print("📊 GERANDO PLANILHA CONSOLIDADA GERAL (HORTIFRÚTI)")
         print("=" * 70)
-        salvar_excel_seguro(df_total, ARQUIVO_SAIDA_XLSX)
-        print(f"\n🎉 Processamento 100% finalizado! Todas as planilhas salvas em: {DIR_PLANILHAS.name}/\n")
+        salvar_excel_seguro(df_total, ARQUIVO_SAIDA_HORTIFRUTE)
+        print(f"\n🎉 Processamento 100% finalizado! Salvo em: {ARQUIVO_SAIDA_HORTIFRUTE}\n")
 
 
 if __name__ == "__main__":

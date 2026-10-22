@@ -79,3 +79,17 @@ class TestOntologiasProdutos:
     def test_descarte_de_ruidos_de_carimbos(self, linha_invalida):
         assert normalizar_produto_perecivel(linha_invalida) is None
         assert normalizar_produto_nao_perecivel(linha_invalida) is None
+
+    # 5. Detecção de Reposição (SIM / NAO)
+    @pytest.mark.parametrize("texto,esperado", [
+        ("Operação dispensada de emissão de NF. Guia de entrega referente a semana de 29/12/2025", "NAO"),
+        ("Operação dispensada de emissão de NF. Reposição da guia 12821 referente a semana de 02 a 06/02/2026", "SIM"),
+        ("LACRES: 15866; 15853 REPOSIÇÃO GUIA 12779 DA SEMANA 26/01/2026", "SIM"),
+        ("Observação: [ ] FALTA [ ] DEVOLUÇÃO REPOSIÇÃO ( ) SIM ( ) NÃO", "NAO"),
+        ("Observação: [ ] FALTA [ ] DEVOLUÇÃO REPOSIÇÃO (X) SIM ( ) NÃO", "SIM"),
+        ("Observação: [ ] FALTA [ ] DEVOLUÇÃO REPOSIÇÃO CA) SIM O) NÃO", "SIM"),
+        ("Observação: REPOSIÇÃO: SIM", "SIM"),
+    ])
+    def test_deteccao_reposicao(self, texto, esperado):
+        from utils.text_cleaner import detectar_reposicao
+        assert detectar_reposicao(texto) == esperado

@@ -93,3 +93,38 @@ def separar_produtos_colados(produto: str, produtos_base: List[str]) -> List[str
             if resto in produtos_base:
                 return [f"{prod} KG", f"{resto} KG"]
     return [produto]
+
+
+def detectar_reposicao(texto: str) -> str:
+    """
+    Identifica se a guia de entrega refere-se a uma REPOSIÇÃO ('SIM' ou 'NAO').
+    Examina o cabeçalho/observações operacionais e o carimbo de recebimento da unidade.
+    """
+    if not texto:
+        return "NAO"
+
+    t_clean = re.sub(r"\s+", " ", texto).strip()
+
+    # 1. Menção no cabeçalho ou nas observações operacionais da guia
+    pats_cabecalho = [
+        r"reposi[çc][ãa]o\s+da\s+guia",
+        r"reposi[çc][ãa]o\s+guia",
+        r"reposi[çc][ãa]o\s+\d{4,6}",
+        r"reposi[çc][ãa]o\s+referente",
+        r"reposi[çc][ãa]o\s+da\s+semana",
+    ]
+    for p in pats_cabecalho:
+        if re.search(p, t_clean, re.IGNORECASE):
+            return "SIM"
+
+    # 2. Carimbo de recebimento com marcação em SIM (X, check, etc.)
+    pats_carimbo_sim = [
+        r"reposi[çc][ãa]o[^\w\n]{0,25}(?:\([^\)]*[xX*✓✔][^\)]*\)|\[[xX]\]|CA\)|3X\))\s*(?:SIM|SM)",
+        r"reposi[çc][ãa]o\s*:\s*SIM",
+        r"reposi[çc][ãa]o\s+SIM(?!\s*\([^)]*\)\s*N[ÃA]O)",
+    ]
+    for p in pats_carimbo_sim:
+        if re.search(p, t_clean, re.IGNORECASE):
+            return "SIM"
+
+    return "NAO"
