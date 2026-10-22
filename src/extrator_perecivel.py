@@ -75,8 +75,34 @@ def processar_pagina_ocr_completo(pagina: pymupdf.Page, pdf_hash: str, num_pag: 
     return dados_ocr, texto_completo
 
 
+def normalizar_produto_perecivel(texto_bruto: str) -> Optional[str]:
+    """Mapeia o texto ruidoso do OCR de carnes para a nomenclatura padronizada oficial."""
+    t = texto_bruto.upper()
+    if "LINGUICA" in t or "CALABRESA" in t or "TALABRESA" in t:
+        return "LINGUICA CALABRESA KG"
+    if "SALSICHA" in t or "HOT DOG" in t or "HOT" in t:
+        return "SALSICHA HOT DOG KG"
+    if "FIGADO" in t or "MUIDO" in t or "MÍUDO" in t:
+        return "MUIDO CONGELADO DE BOVINO - FIGADO KG"
+    if "PEIXE" in t:
+        return "FILE DE PEIXE KG"
+    if "AVE" in t or "FRANGO" in t or "COXA" in t or "SOBRECOXA" in t:
+        return "CARNE DE AVE CONGELADA COXA E SOBRECOXA KG"
+    if "SUINO" in t or "SÚINO" in t or "LOMBO" in t:
+        return "CARNE CONGELADA DE SUINO SEM OSSO - LOMBO KG"
+    if "CHARQUE" in t or "ROJAO" in t or "ROJÃO" in t:
+        return "CARNE DE CHARQUE DO TIPO ROJAO KG"
+    if "SALGADA" in t or "CURADA" in t or "DESSECADA" in t:
+        return "CARNE BOVINA SALGADA CURADA DESSECADA KG"
+    if "MUSCULO" in t or "MÚSCULO" in t or ("BOVINA" in t and "SEGUNDA" in t):
+        return "CARNE BOVINA DE SEGUNDA - MUSCULO KG"
+    if "BOVINA" in t:
+        return "CARNE BOVINA KG"
+    return None
+
+
 def extrair_produtos_ocr_perecivel(dados_ocr: Dict[str, Any]) -> List[str]:
-    """Reconstitui linhas tabulares do OCR e extrai nomes de carnes/embutidos."""
+    """Reconstitui linhas tabulares do OCR e normaliza nomes de carnes/embutidos."""
     linhas: Dict[int, List[Tuple[int, str]]] = {}
     total = len(dados_ocr.get("text", []))
 
@@ -98,26 +124,15 @@ def extrair_produtos_ocr_perecivel(dados_ocr: Dict[str, Any]) -> List[str]:
     for yk in sorted(linhas.keys()):
         linha = " ".join(t[1] for t in sorted(linhas[yk], key=lambda x: x[0]))
 
-        # Linhas de produtos começam com o código de fornecedor CEASA
-        if re.search(r"\bCEASA\d+", linha):
-            # Extrai o nome do alimento entre o código CEASA e os números de pesagem
-            m_prod = re.search(
-                r"\bCEASA\d+[\-\w]*\s+(.+?)(?:\s+\d+[\.,]\d+|\s+\d+\s+KG|\s+KG\b|$)",
-                linha,
-                re.IGNORECASE,
-            )
-            if m_prod:
-                item_nome = m_prod.group(1).strip(" -.,:")
-                # Limpar sufixos residuais de números de embalagem (ex: '... 10', '... 20')
-                item_nome = re.sub(r"\s+\d+$", "", item_nome).strip()
-                # Filtrar ruídos
-                if (
-                    item_nome
-                    and len(item_nome) > 3
-                    and "SERVIÇO" not in item_nome.upper()
-                    and "CEASA/PE" not in item_nome.upper()
-                ):
-                    produtos.append(item_nome)
+        # Ignorar linhas de totais, assinaturas e carimbos
+        if any(ignore in linha.upper() for ignore in ["TOTAIS", "ASSINATURA", "NUTRIC", "ESTOQUIST"]):
+            continue
+
+        # Linhas de produtos começam com o código CEASA ou possuem termos de carnes
+        if re.search(r"\bCEASA\d+", linha) or any(k in linha.upper() for k in ["CARNE", "LINGUICA", "SALSICHA", "MUIDO", "FIGADO"]):
+            prod_padronizado = normalizar_produto_perecivel(linha)
+            if prod_padronizado and prod_padronizado not in produtos:
+                produtos.append(prod_padronizado)
 
     return produtos
 
