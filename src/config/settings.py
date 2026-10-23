@@ -6,10 +6,28 @@ from pathlib import Path
 import os
 import pytesseract
 
-# ==============================================================================
-# CONFIGURAÇÃO DO AMBIENTE & EXECUTÁVEIS
-# ==============================================================================
-TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+import shutil
+
+# Busca automática em caminhos padrões do Windows e no PATH
+POSSIVEIS_CAMINHOS_TESSERACT = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+]
+
+TESSERACT_EXE = None
+for caminho in POSSIVEIS_CAMINHOS_TESSERACT:
+    if os.path.exists(caminho):
+        TESSERACT_EXE = caminho
+        break
+
+if not TESSERACT_EXE:
+    tess_path = shutil.which("tesseract")
+    if tess_path:
+        TESSERACT_EXE = tess_path
+    else:
+        TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
 if os.path.exists(TESSERACT_EXE):
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
 
