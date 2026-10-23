@@ -1,0 +1,5 @@
+# Scripts do Windows (cmd.exe) PRECISAM de CRLF.
+# Com LF puro + "chcp 65001", o cmd desalinha a leitura e corrompe comandos
+# (ex.: "echo" vira "cho"). Esta regra garante CRLF em qualquer clone/commit.
+*.bat text eol=crlf
+*.cmd text eol=crlf

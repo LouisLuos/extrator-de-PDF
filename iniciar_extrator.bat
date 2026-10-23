@@ -32,7 +32,7 @@ if %TESS_FOUND% neq 1 (
     echo Para conseguir extrair PDFs digitalizados/escaneados:
     echo 1. Baixe o instalador oficial do Tesseract para Windows em:
     echo    https://github.com/UB-Mannheim/tesseract/wiki
-    echo 2. Instale mantendo a pasta padrao (C:\Program Files\Tesseract-OCR).
+    echo 2. Instale mantendo a pasta padrao ^(C:\Program Files\Tesseract-OCR^).
     echo.
     echo Continuando inicializacao...
     echo.
@@ -40,15 +40,24 @@ if %TESS_FOUND% neq 1 (
 
 echo [3/4] Verificando dependencias necessarias...
 python -m pip install -q -r requirements.txt
+if %errorlevel% neq 0 (
+    echo.
+    echo [AVISO] Nao foi possivel instalar/atualizar as dependencias via pip.
+    echo Verifique a conexao com a internet ou o proxy da rede.
+    echo Tentando iniciar mesmo assim com as bibliotecas ja instaladas...
+    echo.
+)
 
 echo [4/4] Liberando conexoes antigas na porta 5000...
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5000" ^| findstr "LISTENING"') do (
+REM O padrao ":5000 .*LISTENING" exige um espaco apos a porta, evitando
+REM derrubar por engano processos nas portas 50001, 50002, etc.
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /R /C:":5000 .*LISTENING"') do (
     taskkill /F /PID %%a >nul 2>nul
 )
 
 echo.
 echo ======================================================================
-echo  🟢 EXTRATOR PRISIONAL ONLINE!
+echo  🚀 INICIANDO EXTRATOR PRISIONAL...
 echo  📍 Endereço local: http://127.0.0.1:5000
 echo.
 echo  ⚠️  ATENÇÃO: Mantenha esta janela aberta enquanto utiliza o sistema.
