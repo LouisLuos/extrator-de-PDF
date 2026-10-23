@@ -2,6 +2,8 @@
 chcp 65001 > nul
 title Extrator de Guias Prisionais - SERES / CEASA
 
+cd /d "%~dp0"
+
 echo ======================================================================
 echo    EXTRATOR INTELIGENTE DE GUIAS PRISIONAIS (SERES-PE / CEASA)
 echo ======================================================================
@@ -11,7 +13,9 @@ where python >nul 2>nul
 if %errorlevel% neq 0 (
     echo [ERRO] Python nao encontrado no PATH do sistema.
     echo Por favor, instale o Python 3.10+ marcando a opcao "Add Python to PATH".
-    pause
+    echo.
+    echo Pressione qualquer tecla para sair...
+    pause > nul
     exit /b 1
 )
 
@@ -37,16 +41,26 @@ if %TESS_FOUND% neq 1 (
 echo [3/4] Verificando dependencias necessarias...
 python -m pip install -q -r requirements.txt
 
-echo [4/4] Iniciando o servidor web local na sua maquina...
-cd /d "%~dp0"
+echo [4/4] Liberando conexoes antigas na porta 5000...
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5000" ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%a >nul 2>nul
+)
 
 echo.
 echo ======================================================================
-echo  Servidor ativo! Abrindo o navegador em: http://127.0.0.1:5000
-echo  Para encerrar o extrator, basta fechar esta janela do terminal.
+echo  🟢 EXTRATOR PRISIONAL ONLINE!
+echo  📍 Endereço local: http://127.0.0.1:5000
+echo.
+echo  ⚠️  ATENÇÃO: Mantenha esta janela aberta enquanto utiliza o sistema.
+echo  🛑 Para encerrar a execução, basta fechar esta janela ou teclar CTRL+C.
 echo ======================================================================
 echo.
 
 python app.py
 
+echo.
+echo ======================================================================
+echo  🛑 Servidor encerrado. A janela ficara aberta ate voce fechar.
+echo ======================================================================
 pause
+

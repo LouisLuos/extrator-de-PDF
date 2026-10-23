@@ -177,6 +177,8 @@ def processar_arquivos():
     pagina_continua_global = 1
     max_threads = min(4, os.cpu_count() or 4)
 
+    print(f"\n[WEB] 📥 Recebido lote de {len(arquivos)} arquivo(s)...")
+
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
 
@@ -193,6 +195,8 @@ def processar_arquivos():
                 pdf_hash = hashlib.md5(pdf_bytes).hexdigest()[:10]
                 total_pags = len(doc)
                 doc.close()
+
+                print(f"[WEB] ⚙️ [{idx}/{len(arquivos)}] Processando '{file_obj.filename}' ({total_pags} pág(s))...")
 
                 # Processamento paralelo de páginas
                 tarefas = [(pdf_bytes, i, pdf_hash) for i in range(1, total_pags + 1)]
@@ -249,6 +253,8 @@ def processar_arquivos():
                         else file_obj.filename
                     )
 
+                    print(f"  └─ Guia {num_str or 's/n'}: {lugar_final[:30]} | Data: {data_final or 'N/A'} | Reposição: {reposicao}")
+
                     registros.append({
                         "arquivo": nome_arquivo_formatado,
                         "pagina": pagina_continua_global,
@@ -261,7 +267,7 @@ def processar_arquivos():
                     pagina_continua_global += 1
 
             except Exception as e:
-                print(f"Erro ao processar {file_obj.filename}: {e}")
+                print(f"[WEB] ❌ Erro ao processar {file_obj.filename}: {e}")
 
 
     if not registros:
@@ -283,6 +289,8 @@ def processar_arquivos():
     total_reposicoes = (df["reposicao"] == "SIM").sum()
     total_regulares = total_guias - total_reposicoes
 
+    print(f"[WEB] ✅ Concluído: {total_guias} guia(s) auditada(s). Salvo em: {nome_arquivo_excel}\n")
+
     return jsonify({
         "total_guias": int(total_guias),
         "total_regulares": int(total_regulares),
@@ -297,6 +305,23 @@ def download_excel(filename):
     if request.method == "OPTIONS":
         return "", 200
     return send_from_directory(DIR_WEB_OUTPUT, filename, as_attachment=True)
+
+
+@app.route("/api/encerrar", methods=["POST", "OPTIONS"])
+def encerrar():
+    if request.method == "OPTIONS":
+        return "", 200
+
+    def shutdown():
+        time.sleep(0.5)
+        print("\n" + "=" * 70)
+        print("🛑 SERVIDOR ENCERRADO PELO USUÁRIO")
+        print("=" * 70 + "\n")
+        os._exit(0)
+
+    threading.Thread(target=shutdown, daemon=True).start()
+    return jsonify({"mensagem": "Servidor encerrado com sucesso."})
+
 
 
 def abrir_navegador():
