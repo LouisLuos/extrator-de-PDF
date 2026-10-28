@@ -73,7 +73,14 @@ def criar_app_web() -> Flask:
             )
 
         if resultado is None:
-            return jsonify({"erro": "Nenhuma guia pôde ser processada."}), 400
+            return (
+                jsonify(
+                    {
+                        "erro": "Nenhuma Guia de Entrega Prisional válida (CEASA/SERES-PE) foi identificada nos arquivos enviados."
+                    }
+                ),
+                400,
+            )
 
         return jsonify(resultado.to_dict())
 

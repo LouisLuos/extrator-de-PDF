@@ -82,3 +82,31 @@ def test_multi_guia_segmentation():
     presidios = [r["lugar"] for r in json_data["registros"]]
     assert "PFDB - PRESÍDIO FREI DAMIÃO DE BOZZANO" in presidios
     assert "PPLL - PRESÍDIO PROFESSOR LISBOA CORDEIRO" in presidios
+
+
+def test_rejeicao_pdf_aleatorio_fora_do_dominio():
+    """Garante que enviar um PDF aleatório (ex: livro, currículo, boleto) retorna 400 e não inventa guias."""
+    import io
+    import pymupdf
+
+    doc_aleatorio = pymupdf.open()
+    page = doc_aleatorio.new_page()
+    page.insert_text(
+        (50, 100),
+        "CAPÍTULO 1: HISTÓRIA DA DEMOCRACIA E DO HOSPITAL DA CAPITAL\n"
+        "Autor: Professor Carlos Eduardo - Vitória, 15/01/2026\n"
+        "Este documento é um artigo acadêmico completamente aleatório e não possui relação com guias.",
+    )
+    pdf_bytes = doc_aleatorio.tobytes()
+    client = app.test_client()
+
+    data = {
+        "files": (io.BytesIO(pdf_bytes), "artigo_aleatorio.pdf"),
+        "categoria": "auto",
+    }
+
+    res = client.post("/api/processar", data=data, content_type="multipart/form-data")
+    assert res.status_code == 400
+    json_data = res.get_json()
+    assert "erro" in json_data
+    assert "Nenhuma Guia de Entrega Prisional válida" in json_data["erro"]

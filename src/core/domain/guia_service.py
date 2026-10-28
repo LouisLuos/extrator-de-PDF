@@ -1,11 +1,12 @@
 """
-Camada Core / Domain: Entidades e Regras de Negócio das Guias Prisionais.
+Camada Core / Domain: Entidades, Invariantes e Regras de Negócio das Guias Prisionais.
 
 Regra de Dependência (Clean Architecture):
 - Este módulo possui ZERO dependências externas (não importa Flask, PyMuPDF, OpenCV,
   Tesseract ou Pandas — apenas biblioteca padrão do Python).
-- Contém o catálogo canônico de Unidades Prisionais (SERES-PE), extração e validação de datas,
-  classificação de categorias, segmentação de múltiplas guias e consolidação da entidade.
+- Contém o catálogo canônico de Unidades Prisionais (SERES-PE), guardião de validação de
+  documentos do domínio (Domain Guard), extração de datas, classificação de categorias,
+  segmentação de múltiplas guias e consolidação da entidade.
 """
 
 from dataclasses import dataclass, field
@@ -46,6 +47,7 @@ def detectar_reposicao(texto: str) -> str:
 
     return "NAO"
 
+
 # Tabela Canônica das Unidades Prisionais de Pernambuco (SERES-PE)
 UNIDADES_CANONICAS = [
     ("PIT II", "PIT II - PRESÍDIO DE ITAQUITINGA II", ["PIT II", "PIT IL", "PIT 2", "ITAQUITINGA II", "ITAQUITINGA 2"]),
@@ -72,6 +74,48 @@ UNIDADES_CANONICAS = [
     ("PAISJ", "PAISJ - PENITENCIÁRIA AGROINDUSTRIAL SÃO JOÃO", ["PAISJ", "PAIS", "AGROINDUSTRIAL", "AGRO INDUSTRIAL", "AGRO-"]),
     ("PI", "PI - PRESÍDIO DE IGARASSU", ["IGARASSU", "IGARASU", " PI "]),
 ]
+
+# Palavras genéricas do português que só devem casar fora do campo 'Nome:' se houver contexto prisional/CEASA
+ALIASES_GENERICOS_FORA_DO_CAMPO_NOME = {
+    "PROFESSOR",
+    "VITORIA",
+    "VITÓRIA",
+    "SANTA CRUZ",
+    "AGRESTE",
+    "EVALDO",
+    "ENIO",
+    "ÊNIO",
+    "LISBOA",
+}
+
+# Marcadores de contexto que comprovam que um texto pertence ao universo de Guias Prisionais / CEASA
+MARCADORES_DOMINIO_GUIA = (
+    "CEASA",
+    "GUIA DE ENTREGA",
+    "GUIA DE REMESSA",
+    "SERES",
+    "PRESIDIO",
+    "PRESÍDIO",
+    "PENITENCIARIA",
+    "PENITENCIÁRIA",
+    "COLONIA PENAL",
+    "COLÔNIA PENAL",
+    "RESSOCIALIZACAO",
+    "RESSOCIALIZAÇÃO",
+    "OBSERVACAO E TRIAGEM",
+    "OBSERVAÇÃO E TRIAGEM",
+    "SAUDE PENAL",
+    "SAÚDE PENAL",
+    "UNIDADE PRISIONAL",
+    "DESTINATARIO",
+    "DESTINATÁRIO",
+    "NUTRICIONISTA",
+    "ESTOQUISTA",
+    "LACRE",
+    "DISPENSA DE EMISSAO DE NF",
+    "DISPENSADA DE EMISSAO DE NF",
+    "DISPENSADA DE EMISSÃO DE NF",
+)
 
 
 @dataclass
@@ -110,10 +154,43 @@ class RegistroGuiaConsolidada:
         }
 
 
+def _alias_casa_no_texto(alias: str, texto_upper: str) -> bool:
+    """
+    Verifica se um alias de unidade prisional está presente no texto.
+    Para siglas e termos curtos (<= 5 letras, ex: 'PIT', 'CRA', 'CSP', 'PAIS', 'PI'),
+    exige fronteira de palavra alfabética para nunca casar dentro de palavras comuns
+    como 'CA[PIT]ULO', 'HOS[PIT]AL', 'DEMO[CRA]CIA' ou '[PAIS]AGEM'.
+    """
+    alias_limpo = alias.strip().upper()
+    if not alias_limpo:
+        return False
+
+    if len(alias_limpo) <= 5:
+        padrao = r"(?<![A-ZÀ-Ý])" + re.escape(alias_limpo) + r"(?![A-ZÀ-Ý])"
+        return bool(re.search(padrao, texto_upper))
+
+    return alias_limpo in texto_upper
+
+
+def possui_contexto_dominio_guia(texto_completo: str) -> bool:
+    """Verifica se o texto contém marcadores semânticos do universo CEASA / SERES-PE."""
+    if not texto_completo:
+        return False
+    t_upper = texto_completo.upper()
+    if any(m in t_upper for m in MARCADORES_DOMINIO_GUIA):
+        return True
+    if re.search(r"\b(?:Nome|Destinat[áa]rio|Nomo!|Noma:)\s*:", t_upper):
+        return True
+    if re.search(r"\bCEASA\d+", t_upper):
+        return True
+    return False
+
+
 def identificar_unidade_prisional(texto_completo: str) -> str:
     """
     Identifica de forma canônica a Unidade Prisional de Pernambuco.
-    Prioriza o campo 'Nome:' e faz fallback no cabeçalho antes de observações.
+    Prioriza o campo 'Nome:' e aplica proteção de fronteira de palavra e contexto
+    nos fallbacks para evitar falsos positivos em PDFs aleatórios.
     """
     m = re.search(
         r"(?:Nome|Destinat[áa]rio|Nomo!|Noma:)\s*:?\s*([^;,\n]+?)(?:LF|IF|LE|EF|ISENTO|CNPJ|FONE|CEP|UF|Endere[çc]o|$)",
@@ -122,27 +199,55 @@ def identificar_unidade_prisional(texto_completo: str) -> str:
     )
     nome_campo = m.group(1).upper() if m else ""
 
+    # 1. Busca prioritária dentro do campo explícito 'Nome:' / 'Destinatário:'
     if nome_campo:
         for _sigla, canonico, aliases in UNIDADES_CANONICAS:
             for a in aliases:
-                if a in nome_campo:
+                if _alias_casa_no_texto(a, nome_campo):
                     return canonico
 
+    tem_contexto = possui_contexto_dominio_guia(texto_completo)
+
+    # 2. Fallback no cabeçalho antes de Observação / LACRES
     cabecalho = re.split(
         r"(?:Observa[çc][ãa]o|LACRES)", texto_completo, flags=re.IGNORECASE
     )[0].upper()
     for _sigla, canonico, aliases in UNIDADES_CANONICAS:
         for a in aliases:
-            if a in cabecalho:
+            if a.strip().upper() in ALIASES_GENERICOS_FORA_DO_CAMPO_NOME and not tem_contexto:
+                continue
+            if _alias_casa_no_texto(a, cabecalho):
                 return canonico
 
+    # 3. Fallback no texto completo até 1200 caracteres
     alvo = texto_completo[:1200].upper()
     for _sigla, canonico, aliases in UNIDADES_CANONICAS:
         for a in aliases:
-            if a in alvo:
+            if a.strip().upper() in ALIASES_GENERICOS_FORA_DO_CAMPO_NOME and not tem_contexto:
+                continue
+            if _alias_casa_no_texto(a, alvo):
                 return canonico
 
     return "NÃO IDENTIFICADO"
+
+
+def eh_documento_guia_valido(texto_completo: str) -> bool:
+    """
+    Invariante de Domínio (Domain Guard):
+    Determina se o texto extraído pertence de fato a uma Guia de Entrega Prisional válida.
+    Impede que PDFs aleatórios (currículos, boletos, livros, ofícios) gerem linhas falsas.
+    """
+    if not texto_completo or len(texto_completo.strip()) < 15:
+        return False
+
+    lugar = identificar_unidade_prisional(texto_completo)
+    tem_contexto = possui_contexto_dominio_guia(texto_completo)
+
+    # É válido se identificou uma unidade prisional canônica real OU se tem contexto explícito de guia CEASA/SERES
+    if lugar != "NÃO IDENTIFICADO":
+        return True
+
+    return tem_contexto
 
 
 def extrair_data_robusta(

@@ -1,11 +1,12 @@
 """
 Testes Unitários da Arquitetura Limpa (Core / Domain & Use Cases).
-Demonstra como testar regras de domínio e reconstituição de tabelas em memória,
-sem depender de arquivos externos no disco.
+Demonstra como testar regras de domínio, proteção contra falsos positivos (Domain Guard)
+e reconstituição de tabelas em memória, sem depender de arquivos externos no disco.
 """
 
 from pathlib import Path
 import sys
+import pytest
 
 SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 if str(SRC_DIR) not in sys.path:
@@ -15,6 +16,8 @@ from core.domain.guia_service import (
     GuiaSegmentada,
     RegistroGuiaConsolidada,
     consolidar_guia_segmentada,
+    eh_documento_guia_valido,
+    identificar_unidade_prisional,
     obter_chave_ordenacao,
     segmentar_guias_por_pagina,
 )
@@ -76,3 +79,23 @@ def test_ordenacao_natural_arquivos():
     ordenados = sorted(arquivos, key=obter_chave_ordenacao)
     assert ordenados == ["999.pdf", "12502.pdf", "12510.pdf"]
 
+
+@pytest.mark.parametrize(
+    "texto_pdf_aleatorio",
+    [
+        # Palavras contendo 'PIT' (CA[PIT]ULO, HOS[PIT]AL, CA[PIT]AL)
+        "Capítulo 1: Relatório Financeiro do Hospital da Capital em 15/01/2026.",
+        # Palavras contendo 'CRA' (BURO[CRA]CIA, DEMO[CRA]CIA)
+        "Estudo sobre Burocracia e Democracia Moderna publicado em 20/02/2026.",
+        # Palavras contendo 'PAIS' ([PAIS]AGEM)
+        "Fotografia de Paisagem Natural e Meio Ambiente - Março 2026.",
+        # Palavras genéricas fora de contexto prisional ('Professor', 'Vitória')
+        "Currículo Acadêmico do Professor João da Silva - Vitória, 10/01/2026.",
+        # Boleto / Fatura aleatória
+        "FATURA DE CARTÃO DE CRÉDITO - Vencimento: 10/02/2026 - Valor: R$ 450,00.",
+    ],
+)
+def test_domain_guard_bloqueia_pdfs_aleatorios(texto_pdf_aleatorio: str):
+    """Garante que PDFs aleatórios não sejam deduzidos como unidades prisionais."""
+    assert identificar_unidade_prisional(texto_pdf_aleatorio) == "NÃO IDENTIFICADO"
+    assert eh_documento_guia_valido(texto_pdf_aleatorio) is False

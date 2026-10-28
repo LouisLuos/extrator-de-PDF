@@ -24,6 +24,7 @@ from core.domain.guia_service import (
     RegistroGuiaConsolidada,
     consolidar_guia_segmentada,
     detectar_reposicao,
+    eh_documento_guia_valido,
     extrair_data_robusta,
     identificar_unidade_prisional,
     obter_chave_ordenacao,
@@ -94,9 +95,19 @@ def processar_arquivos_enviados_use_case(
             )
 
             guias = segmentar_guias_por_pagina(paginas_processadas)
-            tem_multi_guias = len(guias) > 1
+            guias_validas = [
+                g for g in guias if eh_documento_guia_valido(g.texto_completo)
+            ]
 
-            for guia in guias:
+            if not guias_validas:
+                print(
+                    f"  └─ ⚠️ Ignorado: '{nome_original}' não pertence ao domínio de Guias Prisionais (CEASA/SERES-PE)."
+                )
+                continue
+
+            tem_multi_guias = len(guias_validas) > 1
+
+            for guia in guias_validas:
                 registro: RegistroGuiaConsolidada = consolidar_guia_segmentada(
                     guia=guia,
                     nome_arquivo_original=nome_original,
