@@ -6,12 +6,6 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-import cv2
-import numpy as np
-import pymupdf
-import pytesseract
-from pytesseract import Output
-
 from config.settings import (
     CROP_HEADER_RATIO,
     DIR_CACHE,
@@ -24,10 +18,12 @@ from utils.text_cleaner import limpar_nome_lugar
 
 def extrair_data_ocr(texto: str) -> Tuple[Optional[str], Optional[str]]:
     """Extrai a data de entrega e o mês da página via Regex resiliente."""
-    # Procura 'Data: DD/MM/AAAA'
-    m = re.search(r"\bData\s*:?\s*(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})", texto, re.IGNORECASE)
+    m = re.search(
+        r"\bData\s*:?\s*(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})",
+        texto,
+        re.IGNORECASE,
+    )
     if not m:
-        # Fallback para primeira data válida encontrada no cabeçalho
         m = re.search(r"\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})\b", texto)
 
     if m:
@@ -65,8 +61,10 @@ def extrair_lugar_ocr(dados_ocr: Dict[str, Any]) -> str:
             if trigger in textos:
                 idx = textos.index(trigger)
                 partes = []
-                for t in textos[idx + 1:]:
-                    if any(rotulo in t.upper() for rotulo in ROTULOS_DELIMITADORES_LUGAR):
+                for t in textos[idx + 1 :]:
+                    if any(
+                        rotulo in t.upper() for rotulo in ROTULOS_DELIMITADORES_LUGAR
+                    ):
                         break
                     partes.append(t)
                 nome = " ".join(partes).strip()
@@ -76,7 +74,9 @@ def extrair_lugar_ocr(dados_ocr: Dict[str, Any]) -> str:
     return "NÃO IDENTIFICADO"
 
 
-def processar_cabecalho_ocr(pagina: pymupdf.Page, pdf_hash: str, num_pag: int) -> Tuple[Optional[str], Optional[str], str, str]:
+def processar_cabecalho_ocr(
+    pagina: Any, pdf_hash: str, num_pag: int
+) -> Tuple[Optional[str], Optional[str], str, str]:
     """Executa OCR na metade superior da página com sistema de cache JSON."""
     DIR_CACHE.mkdir(parents=True, exist_ok=True)
     arquivo_cache = DIR_CACHE / f"{pdf_hash}_p{num_pag:04d}_header.json"
@@ -85,6 +85,12 @@ def processar_cabecalho_ocr(pagina: pymupdf.Page, pdf_hash: str, num_pag: int) -
         with open(arquivo_cache, "r", encoding="utf-8") as f:
             dados_ocr = json.load(f)
     else:
+        import cv2
+        import numpy as np
+        import pymupdf
+        import pytesseract
+        from pytesseract import Output
+
         rect = pagina.rect
         clip = pymupdf.Rect(0, 0, rect.width, rect.height * CROP_HEADER_RATIO)
         pix = pagina.get_pixmap(clip=clip, dpi=DPI)

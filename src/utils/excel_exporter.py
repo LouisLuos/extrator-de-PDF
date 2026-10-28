@@ -68,3 +68,19 @@ def formatar_como_tabela_excel(caminho_xlsx: Path, estilo: str = "TableStyleMedi
 def ajustar_larguras_excel(caminho_xlsx: Path):
     """Aplica formatação completa de Tabela Oficial do Excel e autoajuste de largura."""
     formatar_como_tabela_excel(caminho_xlsx)
+
+
+def salvar_excel_seguro(df, caminho_destino: Path) -> Path:
+    """Salva um DataFrame em Excel com formatação de tabela e fallback para PermissionError."""
+    caminho_destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        df.to_excel(caminho_destino, index=False)
+        ajustar_larguras_excel(caminho_destino)
+        print(f"✅ Planilha gerada com sucesso: {caminho_destino.name} ({len(df)} registros)")
+        return caminho_destino
+    except PermissionError:
+        backup_nome = caminho_destino.with_name(f"{caminho_destino.stem}_novo.xlsx")
+        df.to_excel(backup_nome, index=False)
+        ajustar_larguras_excel(backup_nome)
+        print(f"⚠️ Arquivo aberto no Excel. Salvo como: {backup_nome.name} ({len(df)} registros)")
+        return backup_nome

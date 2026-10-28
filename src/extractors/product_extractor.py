@@ -5,8 +5,6 @@ Extração geométrica de itens alimentícios com correspondência fuzzy.
 import re
 from typing import Any, Dict, List
 
-import pymupdf
-
 from config.settings import (
     HEADER_KEYWORDS,
     PRODUTOS_ESPERADOS,
@@ -17,7 +15,7 @@ from config.settings import (
 from utils.text_cleaner import encontrar_produto_fuzzy, separar_produtos_colados
 
 
-def extrair_produtos_da_pagina(pagina: pymupdf.Page) -> List[str]:
+def extrair_produtos_da_pagina(pagina: Any) -> List[str]:
     """Extrai os alimentos da tabela com controle geométrico de cabeçalho e totais."""
     palavras_raw = pagina.get_text("words")
     if not palavras_raw:
@@ -61,7 +59,7 @@ def extrair_produtos_da_pagina(pagina: pymupdf.Page) -> List[str]:
                     break
 
     produtos_encontrados = []
-    for y, palavras_linha in sorted(linhas.items()):
+    for y, palavras_linha in sorted(linhas.keys()):
         if y_cabecalho is not None and (y <= y_cabecalho or y > y_fim):
             continue
 

@@ -2,10 +2,8 @@
 Constantes, caminhos e parâmetros globais do pipeline de extração.
 """
 
-from pathlib import Path
 import os
-import pytesseract
-
+from pathlib import Path
 import shutil
 
 # Busca automática em caminhos padrões do Windows e no PATH
@@ -29,7 +27,12 @@ if not TESSERACT_EXE:
         TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 if os.path.exists(TESSERACT_EXE):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
+    try:
+        import pytesseract
+
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
+    except ImportError:
+        pass
 
 # ==============================================================================
 # DIRETÓRIOS & ARQUIVOS
