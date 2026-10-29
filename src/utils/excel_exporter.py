@@ -1,10 +1,11 @@
 """
-Utilitários de formatação e exportação para planilhas Excel.
-Gera Tabelas Oficiais do Excel (ListObject) com filtros e estilos corporativos.
+Driven Adapter de Exportação para Planilhas Excel.
+Gera Tabelas Oficiais do Excel (ListObject) com filtros, estilos corporativos e fallback seguro.
 """
 
 import re
 from pathlib import Path
+import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -68,3 +69,19 @@ def formatar_como_tabela_excel(caminho_xlsx: Path, estilo: str = "TableStyleMedi
 def ajustar_larguras_excel(caminho_xlsx: Path):
     """Aplica formatação completa de Tabela Oficial do Excel e autoajuste de largura."""
     formatar_como_tabela_excel(caminho_xlsx)
+
+
+def salvar_excel_seguro(df: pd.DataFrame, caminho_destino: Path) -> Path:
+    """Salva o DataFrame em Excel com formatação elegante e fallback para PermissionError."""
+    caminho_destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        df.to_excel(caminho_destino, index=False)
+        ajustar_larguras_excel(caminho_destino)
+        print(f"✅ Planilha gerada com sucesso: {caminho_destino.name} ({len(df)} registros)")
+        return caminho_destino
+    except PermissionError:
+        backup_nome = caminho_destino.with_name(f"{caminho_destino.stem}_novo.xlsx")
+        df.to_excel(backup_nome, index=False)
+        ajustar_larguras_excel(backup_nome)
+        print(f"⚠️ Arquivo aberto no Excel. Salvo como: {backup_nome.name} ({len(df)} registros)")
+        return backup_nome

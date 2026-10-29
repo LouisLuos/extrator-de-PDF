@@ -32,6 +32,7 @@ PDFs_organizados/
 # ==========================================
 # ⚡ Caches de Extração & OCR
 # ==========================================
+cache/
 cache_ocr/
 cache_ocr_*/
 .cache_ocr/
@@ -47,8 +48,10 @@ saida_*.xlsx
 *.csv
 
 # ==========================================
-# 📝 Anotações & Planejamento Local
+# 📝 Anotações, Documentos Locais & Logs
 # ==========================================
+docs/
+logs/
 proximos_passos.txt
 tarefa.md
 *.tmp

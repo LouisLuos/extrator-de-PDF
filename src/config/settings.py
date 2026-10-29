@@ -4,9 +4,8 @@ Constantes, caminhos e parâmetros globais do pipeline de extração.
 
 from pathlib import Path
 import os
-import pytesseract
-
 import shutil
+import pytesseract
 
 # Busca automática em caminhos padrões do Windows e no PATH
 POSSIVEIS_CAMINHOS_TESSERACT = [
@@ -32,11 +31,12 @@ if os.path.exists(TESSERACT_EXE):
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
 
 # ==============================================================================
-# DIRETÓRIOS & ARQUIVOS
+# DIRETÓRIOS & ARQUIVOS (Unificados na pasta cache/)
 # ==============================================================================
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DIR_PDFS = BASE_DIR / "PDFs"
-DIR_CACHE = BASE_DIR / "cache_ocr"
+DIR_CACHE_ROOT = BASE_DIR / "cache"
+DIR_CACHE = DIR_CACHE_ROOT / "hortifrute"
 DIR_PLANILHAS = BASE_DIR / "planilhas_saida"
 ARQUIVO_SAIDA_XLSX = DIR_PLANILHAS / "saida_consolidada_total.xlsx"
 GABARITO_XLSX = BASE_DIR.parent / "saida_hibrida.xlsx"

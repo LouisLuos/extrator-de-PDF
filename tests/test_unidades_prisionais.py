@@ -11,7 +11,7 @@ SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from extrator_perecivel import identificar_unidade_prisional, UNIDADES_CANONICAS
+from core.domain.guia_service import identificar_unidade_prisional, UNIDADES_CANONICAS
 from utils.text_cleaner import limpar_nome_lugar
 
 

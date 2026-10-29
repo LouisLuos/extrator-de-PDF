@@ -11,8 +11,10 @@ SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from extrator_perecivel import normalizar_produto_perecivel
-from extrator_nao_perecivel import normalizar_produto_nao_perecivel
+from core.domain.guia_service import (
+    normalizar_produto_nao_perecivel,
+    normalizar_produto_perecivel,
+)
 from utils.text_cleaner import encontrar_produto_fuzzy
 from config.settings import PRODUTOS_ESPERADOS
 

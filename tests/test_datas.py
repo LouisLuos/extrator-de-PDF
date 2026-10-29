@@ -11,8 +11,8 @@ SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from extrator_perecivel import extrair_data_robusta
-from extractors.header_extractor import extrair_data_ocr
+from core.domain.guia_service import extrair_data_robusta
+from infra.header_extractor import extrair_data_ocr
 
 
 class TestExtracaoDatas:

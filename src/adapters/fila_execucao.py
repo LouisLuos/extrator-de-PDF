@@ -1,30 +1,29 @@
 """
-Orquestrador de Fila de Execução (Job Queue / Process Trigger).
+Adaptador de Entrada de Automação / Fila de Execução (Driving Adapter).
 
 Responsabilidade:
-- Monitorar a conclusão do processo de perecíveis (PID alvo).
-- Assim que o processo anterior liberar a CPU e os recursos, disparar automaticamente
-  o pipeline de Não Perecíveis (src/extrator_nao_perecivel.py).
-- Salvar log de execução em fila_execucao.log.
+- Monitorar a conclusão do processo anterior (PID alvo).
+- Disparar automaticamente o pipeline de Não Perecíveis via `app.py nao_perecivel`.
+- Salvar log de execução em `logs/fila_execucao.log`.
 """
 
 import ctypes
-import os
+from datetime import datetime
+from pathlib import Path
 import subprocess
 import sys
 import time
-from datetime import datetime
-from pathlib import Path
 
-# Configurar UTF-8
 if sys.stdout.encoding != "utf-8":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-ARQUIVO_LOG = BASE_DIR / "fila_execucao.log"
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DIR_LOGS = BASE_DIR / "logs"
+DIR_LOGS.mkdir(parents=True, exist_ok=True)
+ARQUIVO_LOG = DIR_LOGS / "fila_execucao.log"
 
 
 def log(msg: str):
@@ -55,23 +54,17 @@ def aguardar_e_executar(pid_alvo: int):
     log(f"🎯 ORQUESTRADOR DE FILA ATIVADO: Monitorando PID {pid_alvo}")
     log("=" * 70)
 
-    # 1. Loop de monitoramento do processo de perecíveis
     while is_pid_running(pid_alvo):
-        log(f"⏳ Processo de perecíveis (PID {pid_alvo}) ainda em execução. Aguardando 20 segundos...")
+        log(f"⏳ Processo (PID {pid_alvo}) ainda em execução. Aguardando 20 segundos...")
         time.sleep(20)
 
     log("=" * 70)
-    log(f"🏁 Processo {pid_alvo} (Perecíveis) CONCLUÍDO com sucesso! Liberando CPU.")
+    log(f"🏁 Processo {pid_alvo} CONCLUÍDO com sucesso! Liberando CPU.")
     log("🚀 DISPARANDO GATILHO: Iniciando pipeline de NÃO PERECÍVEIS...")
     log("=" * 70)
 
-    # 2. Executar o pipeline de não perecíveis
-    script_nao_perecivel = BASE_DIR / "src" / "extrator_nao_perecivel.py"
-    if not script_nao_perecivel.exists():
-        log(f"❌ Script não encontrado: {script_nao_perecivel}")
-        return
-
-    cmd = [sys.executable, "-u", str(script_nao_perecivel)]
+    entrypoint = BASE_DIR / "app.py"
+    cmd = [sys.executable, "-u", str(entrypoint), "nao_perecivel"]
     log(f"Executando comando: {' '.join(cmd)}")
 
     inicio = time.time()
@@ -85,11 +78,12 @@ def aguardar_e_executar(pid_alvo: int):
         errors="replace",
     )
 
-    for line in iter(proc.stdout.readline, ""):
-        if line:
-            log(line.strip())
+    if proc.stdout:
+        for line in iter(proc.stdout.readline, ""):
+            if line:
+                log(line.strip())
+        proc.stdout.close()
 
-    proc.stdout.close()
     return_code = proc.wait()
     duracao = (time.time() - inicio) / 60
 
@@ -99,7 +93,5 @@ def aguardar_e_executar(pid_alvo: int):
 
 
 if __name__ == "__main__":
-    pid_monitorado = 15692
-    if len(sys.argv) > 1:
-        pid_monitorado = int(sys.argv[1])
-    aguardar_e_executar(pid_monitorado)
+    pid = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    aguardar_e_executar(pid)
